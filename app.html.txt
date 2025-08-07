@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เว็บออกแบบทรงผม AI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f2f5;
+            margin: 0;
+            overflow-x: hidden;
+        }
+        .container {
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 600px;
+            width: 100%;
+        }
+        h1 {
+            color: #333;
+        }
+        p {
+            color: #666;
+        }
+        .input-area {
+            margin: 1.5rem 0;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        button {
+            padding: 0.75rem 1.5rem;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result-container {
+            margin-top: 1.5rem;
+            position: relative;
+            min-height: 300px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        #video, #faceCanvas {
+            max-width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            display: none;
+        }
+        #loading {
+            position: absolute;
+            font-size: 1.2rem;
+            color: #555;
+            display: none;
+        }
+        #hairstyleMenu {
+            margin-top: 2rem;
+        }
+        .hairstyle-options {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 1rem;
+        }
+        .hairstyle-btn {
+            flex: 1 1 auto;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>เว็บออกแบบทรงผม AI (เรียลไทม์)</h1>
+        <p>ลองทรงผมใหม่ได้ทันทีผ่านกล้อง</p>
+        <div class="input-area">
+            <button id="startBtn">เริ่มใช้กล้อง</button>
+            <button id="stopBtn" style="display:none;">หยุดกล้อง</button>
+        </div>
+        <div class="result-container">
+            <video id="video" width="600" height="450" autoplay muted></video>
+            <canvas id="faceCanvas"></canvas>
+            <div id="loading">กำลังโหลดโมเดล AI...</div>
+        </div>
+        <div id="hairstyleMenu" style="display:none;">
+            <h3>ทรงผมที่เหมาะกับคุณ:</h3>
+            <div class="hairstyle-options">
+                <button class="hairstyle-btn" data-url="https://via.placeholder.com/600x450/FF5733/FFFFFF?text=ทรงผม1">ทรงผม 1</button>
+                <button class="hairstyle-btn" data-url="https://via.placeholder.com/600x450/C70039/FFFFFF?text=ทรงผม2">ทรงผม 2</button>
+                <button class="hairstyle-btn" data-url="https://via.placeholder.com/600x450/900C3F/FFFFFF?text=ทรงผม3">ทรงผม 3</button>
+                <button class="hairstyle-btn" data-url="https://via.placeholder.com/600x450/581845/FFFFFF?text=ทรงผม4">ทรงผม 4</button>
+                <button class="hairstyle-btn" data-url="https://via.placeholder.com/600x450/282828/FFFFFF?text=ทรงผม5">ทรงผม 5</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const video = document.getElementById('video');
+        const faceCanvas = document.getElementById('faceCanvas');
+        const loading = document.getElementById('loading');
+        const hairstyleMenu = document.getElementById('hairstyleMenu');
+        const hairstyleButtons = document.querySelectorAll('.hairstyle-btn');
+        const ctx = faceCanvas.getContext('2d');
+    
+        let selectedHairstyle = null;
+        let videoStream = null;
+    
+        const MODELS_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/';
+    
+        // โหลดโมเดล AI
+        Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri(MODELS_URL),
+            faceapi.nets.faceLandmark68Net.loadFromUri(MODELS_URL),
+        ]).then(() => {
+            loading.style.display = 'none';
+            startBtn.style.display = 'block';
+            console.log('Face detection models loaded!');
+        }).catch(err => {
+            console.error('Failed to load models:', err);
+            loading.innerText = 'เกิดข้อผิดพลาดในการโหลดโมเดล';
+        });
+    
+        // ฟังก์ชันสำหรับเริ่มใช้กล้อง
+        startBtn.addEventListener('click', () => {
+            navigator.mediaDevices.getUserMedia({ video: {} })
+                .then(stream => {
+                    video.srcObject = stream;
+                    videoStream = stream;
+                    video.style.display = 'block';
+                    faceCanvas.style.display = 'block';
+                    startBtn.style.display = 'none';
+                    stopBtn.style.display = 'block';
+                    hairstyleMenu.style.display = 'block';
+                    video.addEventListener('play', () => {
+                        setInterval(async () => {
+                            const detections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
+                            ctx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+                            
+                            if (detections) {
+                                // ปรับขนาด canvas ให้เท่ากับ video
+                                faceCanvas.width = video.videoWidth;
+                                faceCanvas.height = video.videoHeight;
+                                
+                                // วาดภาพจากวิดีโอลงบน canvas
+                                ctx.drawImage(video, 0, 0, faceCanvas.width, faceCanvas.height);
+                                
+                                // ถ้ามีทรงผมที่เลือกไว้ ให้วาดทับลงไป
+                                if (selectedHairstyle) {
+                                    const resizedDetections = faceapi.resizeResults(detections, { width: faceCanvas.width, height: faceCanvas.height });
+                                    
+                                    // โค้ดสำหรับวางทรงผมบนหัว (ส่วนนี้ต้องมีการปรับแต่งให้พอดี)
+                                    // ตัวอย่างนี้จะวาดแบบง่ายๆ ลงไปตรงกลาง
+                                    const headBox = resizedDetections.landmarks.getJawOutline()[8];
+                                    const headX = headBox.x - (selectedHairstyle.width / 2);
+                                    const headY = headBox.y - (selectedHairstyle.height * 0.8);
+                                    
+                                    ctx.globalAlpha = 0.8;
+                                    ctx.drawImage(selectedHairstyle, 0, 0, faceCanvas.width, faceCanvas.height);
+                                    ctx.globalAlpha = 1.0;
+                                }
+                            } else {
+                                // ถ้าไม่พบใบหน้า ให้วาดภาพจากวิดีโอเฉยๆ
+                                ctx.drawImage(video, 0, 0, faceCanvas.width, faceCanvas.height);
+                            }
+                        }, 100); // ตรวจจับทุกๆ 100 มิลลิวินาที (10 ครั้ง/วินาที)
+                    });
+                })
+                .catch(err => {
+                    console.error("Error accessing camera: ", err);
+                    alert("ไม่สามารถเข้าถึงกล้องได้ กรุณาตรวจสอบสิทธิ์การใช้งาน");
+                });
+        });
+        
+        // ฟังก์ชันสำหรับหยุดใช้กล้อง
+        stopBtn.addEventListener('click', () => {
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+                video.style.display = 'none';
+                faceCanvas.style.display = 'none';
+                startBtn.style.display = 'block';
+                stopBtn.style.display = 'none';
+                hairstyleMenu.style.display = 'none';
+            }
+        });
+    
+        // เพิ่ม Event Listener ให้กับปุ่มทรงผมทั้งหมด
+        hairstyleButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const hairstyleUrl = button.getAttribute('data-url');
+                const hairstyleImage = new Image();
+                hairstyleImage.src = hairstyleUrl;
+                hairstyleImage.onload = () => {
+                    selectedHairstyle = hairstyleImage;
+                };
+            });
+        });
+    </script>
+</body>
+</html>
