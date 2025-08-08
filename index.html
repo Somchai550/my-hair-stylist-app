@@ -112,108 +112,162 @@
         </div>
     </div>
     <script>
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const video = document.getElementById('video');
-        const faceCanvas = document.getElementById('faceCanvas');
-        const loading = document.getElementById('loading');
-        const hairstyleMenu = document.getElementById('hairstyleMenu');
-        const hairstyleButtons = document.querySelectorAll('.hairstyle-btn');
-        const ctx = faceCanvas.getContext('2d');
-    
-        let selectedHairstyle = null;
-        let videoStream = null;
-    
-        const MODELS_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/';
-    
-        // โหลดโมเดล AI
-        Promise.all([
-            faceapi.nets.tinyFaceDetector.loadFromUri(MODELS_URL),
-            faceapi.nets.faceLandmark68Net.loadFromUri(MODELS_URL),
-        ]).then(() => {
-            loading.style.display = 'none';
-            startBtn.style.display = 'block';
-            console.log('Face detection models loaded!');
-        }).catch(err => {
-            console.error('Failed to load models:', err);
-            loading.innerText = 'เกิดข้อผิดพลาดในการโหลดโมเดล';
-        });
-    
-        // ฟังก์ชันสำหรับเริ่มใช้กล้อง
-        startBtn.addEventListener('click', () => {
-            navigator.mediaDevices.getUserMedia({ video: {} })
-                .then(stream => {
-                    video.srcObject = stream;
-                    videoStream = stream;
-                    video.style.display = 'block';
-                    faceCanvas.style.display = 'block';
-                    startBtn.style.display = 'none';
-                    stopBtn.style.display = 'block';
-                    hairstyleMenu.style.display = 'block';
-                    video.addEventListener('play', () => {
-                        setInterval(async () => {
-                            const detections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
-                            ctx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
-                            
-                            if (detections) {
-                                // ปรับขนาด canvas ให้เท่ากับ video
-                                faceCanvas.width = video.videoWidth;
-                                faceCanvas.height = video.videoHeight;
-                                
-                                // วาดภาพจากวิดีโอลงบน canvas
-                                ctx.drawImage(video, 0, 0, faceCanvas.width, faceCanvas.height);
-                                
-                                // ถ้ามีทรงผมที่เลือกไว้ ให้วาดทับลงไป
-                                if (selectedHairstyle) {
-                                    const resizedDetections = faceapi.resizeResults(detections, { width: faceCanvas.width, height: faceCanvas.height });
-                                    
-                                    // โค้ดสำหรับวางทรงผมบนหัว (ส่วนนี้ต้องมีการปรับแต่งให้พอดี)
-                                    // ตัวอย่างนี้จะวาดแบบง่ายๆ ลงไปตรงกลาง
-                                    const headBox = resizedDetections.landmarks.getJawOutline()[8];
-                                    const headX = headBox.x - (selectedHairstyle.width / 2);
-                                    const headY = headBox.y - (selectedHairstyle.height * 0.8);
-                                    
-                                    ctx.globalAlpha = 0.8;
-                                    ctx.drawImage(selectedHairstyle, 0, 0, faceCanvas.width, faceCanvas.height);
-                                    ctx.globalAlpha = 1.0;
-                                }
-                            } else {
-                                // ถ้าไม่พบใบหน้า ให้วาดภาพจากวิดีโอเฉยๆ
-                                ctx.drawImage(video, 0, 0, faceCanvas.width, faceCanvas.height);
-                            }
-                        }, 100); // ตรวจจับทุกๆ 100 มิลลิวินาที (10 ครั้ง/วินาที)
-                    });
-                })
-                .catch(err => {
-                    console.error("Error accessing camera: ", err);
-                    alert("ไม่สามารถเข้าถึงกล้องได้ กรุณาตรวจสอบสิทธิ์การใช้งาน");
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const video = document.getElementById('video');
+    const faceCanvas = document.getElementById('faceCanvas');
+    const loading = document.getElementById('loading');
+    const hairstyleMenu = document.getElementById('hairstyleMenu');
+    const imageUploadStatic = document.getElementById('imageUploadStatic');
+    const processStaticBtn = document.getElementById('processStaticBtn');
+    const faceShapeSelection = document.getElementById('faceShapeSelection');
+    const faceShapeButtons = document.querySelectorAll('.face-shape-btn');
+    const applyHairstyleButtons = document.querySelectorAll('.apply-hairstyle-btn');
+    const ctx = faceCanvas.getContext('2d');
+
+    let selectedHairstyle = null;
+    let videoStream = null;
+    let originalImage = null;
+    let isRealtimeMode = false;
+
+    const MODELS_URL = 'https://somchai550.github.io/hair-ar-web/models/';
+
+    Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODELS_URL),
+        faceapi.nets.faceLandmark68Net.loadFromUri(MODELS_URL),
+    ]).then(() => {
+        loading.style.display = 'none';
+        startBtn.style.display = 'block';
+        console.log('Face detection models loaded!');
+    }).catch(err => {
+        console.error('Failed to load models:', err);
+        loading.innerText = 'เกิดข้อผิดพลาดในการโหลดโมเดล';
+    });
+
+    startBtn.addEventListener('click', () => {
+        isRealtimeMode = true;
+        if (videoStream) { stopBtn.click(); }
+        video.style.display = 'block';
+        faceCanvas.style.display = 'block';
+        startBtn.style.display = 'none';
+        stopBtn.style.display = 'block';
+        hairstyleMenu.style.display = 'block';
+
+        navigator.mediaDevices.getUserMedia({ video: {} })
+            .then(stream => {
+                video.srcObject = stream;
+                videoStream = stream;
+                video.addEventListener('play', () => {
+                    setInterval(async () => {
+                        const detections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
+                        ctx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+
+                        faceCanvas.width = video.videoWidth;
+                        faceCanvas.height = video.videoHeight;
+                        ctx.drawImage(video, 0, 0, faceCanvas.width, faceCanvas.height);
+
+                        if (detections && selectedHairstyle && selectedHairstyle.complete) {
+                            ctx.globalAlpha = 0.8;
+                            ctx.drawImage(selectedHairstyle, 0, 0, faceCanvas.width, faceCanvas.height);
+                            ctx.globalAlpha = 1.0;
+                        }
+                    }, 100);
                 });
-        });
-        
-        // ฟังก์ชันสำหรับหยุดใช้กล้อง
-        stopBtn.addEventListener('click', () => {
-            if (videoStream) {
-                videoStream.getTracks().forEach(track => track.stop());
-                videoStream = null;
-                video.style.display = 'none';
-                faceCanvas.style.display = 'none';
-                startBtn.style.display = 'block';
-                stopBtn.style.display = 'none';
+            })
+            .catch(err => {
+                console.error("Error accessing camera: ", err);
+                alert("ไม่สามารถเข้าถึงกล้องได้ กรุณาตรวจสอบสิทธิ์การใช้งาน");
+            });
+    });
+
+    stopBtn.addEventListener('click', () => {
+        if (videoStream) {
+            videoStream.getTracks().forEach(track => track.stop());
+            videoStream = null;
+        }
+        isRealtimeMode = false;
+        video.style.display = 'none';
+        faceCanvas.style.display = 'none';
+        startBtn.style.display = 'block';
+        stopBtn.style.display = 'none';
+        hairstyleMenu.style.display = 'none';
+        ctx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+    });
+
+    imageUploadStatic.addEventListener('change', (e) => {
+        if (videoStream) { stopBtn.click(); }
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    originalImage = img.cloneNode(true);
+                    faceCanvas.width = img.width;
+                    faceCanvas.height = img.height;
+                    ctx.drawImage(img, 0, 0, img.width, img.height);
+                    faceCanvas.style.display = 'block';
+                    hairstyleMenu.style.display = 'none';
+                };
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    processStaticBtn.addEventListener('click', async () => {
+        if (!originalImage) {
+            alert('กรุณาอัปโหลดรูปภาพก่อน');
+            return;
+        }
+        loading.style.display = 'block';
+        hairstyleMenu.style.display = 'none';
+        try {
+            const detections = await faceapi.detectSingleFace(originalImage, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
+            if (detections) {
+                alert('ตรวจจับใบหน้าสำเร็จ! นี่คือทรงผมที่แนะนำสำหรับคุณ:');
+                faceShapeSelection.style.display = 'flex';
+            } else {
+                alert('ไม่พบใบหน้าในรูปภาพ กรุณาลองใช้รูปอื่น');
                 hairstyleMenu.style.display = 'none';
             }
+        } catch (error) {
+            console.error('เกิดข้อผิดพลาดในการตรวจจับใบหน้า:', error);
+            alert('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง');
+        } finally {
+            loading.style.display = 'none';
+        }
+    });
+
+    applyHairstyleButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const hairstyleUrl = button.getAttribute('data-url');
+            if (!hairstyleUrl) return;
+
+            const hairstyleImage = new Image();
+            hairstyleImage.src = hairstyleUrl;
+            hairstyleImage.onload = () => {
+                selectedHairstyle = hairstyleImage;
+                if (!isRealtimeMode && originalImage) {
+                    ctx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+                    ctx.drawImage(originalImage, 0, 0, faceCanvas.width, faceCanvas.height);
+
+                    if (selectedHairstyle.complete) {
+                        ctx.globalAlpha = 0.8;
+                        ctx.drawImage(selectedHairstyle, 0, 0, faceCanvas.width, faceCanvas.height);
+                        ctx.globalAlpha = 1.0;
+                    }
+                }
+            };
         });
-    
-        // เพิ่ม Event Listener ให้กับปุ่มทรงผมทั้งหมด
-        hairstyleButtons.forEach(button => {
-            button.addEventListener('click', () => {
-                const hairstyleUrl = button.getAttribute('data-url');
-                const hairstyleImage = new Image();
-                hairstyleImage.src = hairstyleUrl;
-                hairstyleImage.onload = () => {
-                    selectedHairstyle = hairstyleImage;
-                };
-            });
+    });
+
+    faceShapeButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const selectedShape = button.getAttribute('data-shape');
+            alert(`คุณเลือกโครงหน้าแบบ: ${selectedShape} - ตอนนี้เราจะแสดงทรงผมที่เหมาะกับคุณ`);
+            faceShapeSelection.style.display = 'none';
+            hairstyleMenu.style.display = 'block';
         });
-    </script>
-</body>
-</html>
+    });
+</script>
